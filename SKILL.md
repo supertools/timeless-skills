@@ -1,31 +1,41 @@
 ---
-name: timeless-api
-description: Query and manage Timeless meetings, rooms, transcripts, and AI documents via the Timeless API. Use when the user asks about their meetings, wants to search meetings, read transcripts, get summaries, list rooms, create rooms, add/remove conversations from rooms, resolve Timeless share links, upload recordings, or chat with Timeless AI about meeting content. Requires TIMELESS_ACCESS_TOKEN env var.
+name: timeless
+description: Query and manage Timeless meetings, rooms, transcripts, and AI documents. Capture podcast episodes and YouTube videos into Timeless for transcription. Use when the user asks about their meetings, wants to search meetings, read transcripts, get summaries, list rooms, create rooms, add/remove conversations from rooms, resolve Timeless share links, upload recordings, chat with Timeless AI about meeting content, or capture podcasts/YouTube videos.
+version: 1.0.0
+metadata:
+  openclaw:
+    requires:
+      env:
+        - TIMELESS_ACCESS_TOKEN
+      bins:
+        - curl
+        - node
+      anyBins:
+        - yt-dlp
+    primaryEnv: TIMELESS_ACCESS_TOKEN
+    emoji: "\u23F0"
+    homepage: https://github.com/supertools/timeless-skills
 ---
 
-# Timeless API
+# Timeless
 
-> **Source**: [github.com/supertools/timeless-skills](https://github.com/supertools/timeless-skills) — pull the latest if this skill seems outdated.
+> **Source**: [github.com/supertools/timeless-skills](https://github.com/supertools/timeless-skills)
 
-Interact with [Timeless](https://timeless.day) meeting data: search meetings, read transcripts, get AI summaries, browse rooms, upload recordings, and chat with the AI agent.
+Interact with [Timeless](https://timeless.day) meeting data: search meetings, read transcripts, get AI summaries, browse rooms, upload recordings, chat with the AI agent, and capture podcasts/YouTube videos for transcription.
 
 ## API Reference
 
-For full endpoint documentation with response schemas, status enums, and detailed examples, read `../api-reference.md`.
+For full endpoint documentation with response schemas, status enums, and detailed examples, read `api-reference.md` (in this skill folder).
 
 ## Prerequisites
 
-Set `TIMELESS_ACCESS_TOKEN` as an env var in your OpenClaw gateway config:
+- `TIMELESS_ACCESS_TOKEN` env var (get token at [my.timeless.day/api-token](https://my.timeless.day/api-token))
+- `yt-dlp` for YouTube downloads (install via package manager: `apt install yt-dlp`, `brew install yt-dlp`, or `pip install yt-dlp`. Alternatively set `YTDLP_PATH` to point to an existing binary.)
 
+Set up in OpenClaw:
 ```bash
 openclaw config patch env.vars.TIMELESS_ACCESS_TOKEN=<your_token>
 ```
-
-**To get your token:**
-1. Go to [my.timeless.day/api-token](https://my.timeless.day/api-token)
-2. Copy the access token
-
-> The token may expire. If you get 401 errors, grab a fresh one from the same page.
 
 ## Base URL
 
@@ -205,6 +215,8 @@ curl -X POST "https://my.timeless.day/api/v1/conversation/process/media/" \
 
 Poll `GET /api/v1/spaces/{space_uuid}/` until `is_processing` is `false`.
 
+Or use the helper script: `bash scripts/upload.sh FILE_PATH LANGUAGE [TITLE]`
+
 **Supported formats:** mp3, wav, m4a, mp4, webm, ogg
 
 ---
@@ -231,7 +243,7 @@ def decode_timeless_url(url):
     return combined[:22], combined[22:]  # (space_id, host_id)
 ```
 
-After decoding, fetch with Get Space (try private → workspace → public).
+After decoding, fetch with Get Space (try private -> workspace -> public).
 
 ---
 
@@ -379,11 +391,62 @@ The pattern is always the same: poll for new meetings, pull the data, do your th
 
 ---
 
+## Capture: Podcasts
+
+Scripts in `scripts/` folder.
+
+1. **Search**: `bash scripts/podcast.sh search "podcast name"`
+2. **List episodes**: `bash scripts/podcast.sh episodes FEED_URL [limit]`
+3. **Download**: `bash scripts/podcast.sh download MP3_URL /tmp/episode.mp3`
+4. **Upload to Timeless**: `bash scripts/upload.sh /tmp/episode.mp3 en "Episode Title"`
+5. Clean up the file from /tmp
+
+### Spotify links
+
+Extract the episode title via oEmbed, then search by name:
+```bash
+curl -s "https://open.spotify.com/oembed?url=SPOTIFY_URL"
+```
+
+---
+
+## Capture: YouTube
+
+1. **Get info**: `bash scripts/youtube.sh info "YOUTUBE_URL"`
+2. **Download video**: `bash scripts/youtube.sh download "YOUTUBE_URL" /tmp/video.mp4`
+3. **Upload to Timeless**: `bash scripts/upload.sh /tmp/video.mp4 en "Video Title"`
+4. Clean up the file from /tmp
+
+Downloads as mp4 (video+audio). No ffmpeg needed. Uses the best pre-muxed format (typically 720p), which is fine for Timeless.
+
+---
+
+## Capture: Adding to a Room
+
+After uploading, attach the content to a Timeless room for organized collections.
+
+1. Upload returns a `space_uuid`. Poll `GET /api/v1/spaces/{space_uuid}/` until `is_processing=false`.
+2. From the space response, get the `conversation.uuid`.
+3. Add to room: `POST /api/v1/spaces/{room_uuid}/resources/` with `{"resource_type": "CONVERSATION", "resource_uuid": "CONV_UUID"}`
+
+To create a new room first: `POST /api/v1/spaces/` with `{"has_onboarded": true, "space_type": "ROOM", "title": "My Collection"}`
+
+---
+
+## Notes
+
+- Podcast MP3s can be large (100-300MB for long episodes). Downloads may take a minute.
+- YouTube downloads require yt-dlp. If not installed, the script will fail with a clear error.
+- Always clean up downloaded files from /tmp after uploading.
+- Set `YTDLP_PATH` env var if yt-dlp is not on PATH.
+
+---
+
 ## Error Handling
 
 | Code | Action |
 |------|--------|
-| 401 | Token expired. Re-authenticate and update env var. |
+| 401 | Token expired. Re-authenticate at my.timeless.day/api-token |
 | 403 | No access. Try workspace or public endpoint. |
 | 404 | Not found. Check UUID. |
 | 429 | Rate limited. Wait and retry. |
