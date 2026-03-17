@@ -1,5 +1,5 @@
 ---
-name: timeless
+name: timeless-api
 description: Query and manage Timeless meetings, rooms, transcripts, and AI documents. Capture podcast episodes and YouTube videos into Timeless for transcription. Use when the user asks about their meetings, wants to search meetings, read transcripts, get summaries, list rooms, create rooms, add/remove conversations from rooms, resolve Timeless share links, upload recordings, chat with Timeless AI about meeting content, or capture podcasts/YouTube videos.
 version: 1.0.0
 metadata:
@@ -17,7 +17,7 @@ metadata:
     homepage: https://github.com/supertools/timeless-skills
 ---
 
-# Timeless
+# Timeless API
 
 > **Source**: [github.com/supertools/timeless-skills](https://github.com/supertools/timeless-skills)
 
@@ -25,7 +25,7 @@ Interact with [Timeless](https://timeless.day) meeting data: search meetings, re
 
 ## API Reference
 
-For full endpoint documentation with response schemas, status enums, and detailed examples, read `api-reference.md` (in this skill folder).
+For full endpoint documentation with response schemas, status enums, and detailed examples, read `../api-reference.md`.
 
 ## Prerequisites
 
@@ -215,7 +215,7 @@ curl -X POST "https://my.timeless.day/api/v1/conversation/process/media/" \
 
 Poll `GET /api/v1/spaces/{space_uuid}/` until `is_processing` is `false`.
 
-Or use the helper script: `bash scripts/upload.sh FILE_PATH LANGUAGE [TITLE]`
+Or use the helper script: `bash ../scripts/upload.sh FILE_PATH LANGUAGE [TITLE]`
 
 **Supported formats:** mp3, wav, m4a, mp4, webm, ogg
 
@@ -393,12 +393,12 @@ The pattern is always the same: poll for new meetings, pull the data, do your th
 
 ## Capture: Podcasts
 
-Scripts in `scripts/` folder.
+Scripts in `../scripts/` folder.
 
-1. **Search**: `bash scripts/podcast.sh search "podcast name"`
-2. **List episodes**: `bash scripts/podcast.sh episodes FEED_URL [limit]`
-3. **Download**: `bash scripts/podcast.sh download MP3_URL /tmp/episode.mp3`
-4. **Upload to Timeless**: `bash scripts/upload.sh /tmp/episode.mp3 en "Episode Title"`
+1. **Search**: `bash ../scripts/podcast.sh search "podcast name"`
+2. **List episodes**: `bash ../scripts/podcast.sh episodes FEED_URL [limit]`
+3. **Download**: `bash ../scripts/podcast.sh download MP3_URL /tmp/episode.mp3`
+4. **Upload to Timeless**: `bash ../scripts/upload.sh /tmp/episode.mp3 en "Episode Title"`
 5. Clean up the file from /tmp
 
 ### Spotify links
@@ -412,9 +412,9 @@ curl -s "https://open.spotify.com/oembed?url=SPOTIFY_URL"
 
 ## Capture: YouTube
 
-1. **Get info**: `bash scripts/youtube.sh info "YOUTUBE_URL"`
-2. **Download video**: `bash scripts/youtube.sh download "YOUTUBE_URL" /tmp/video.mp4`
-3. **Upload to Timeless**: `bash scripts/upload.sh /tmp/video.mp4 en "Video Title"`
+1. **Get info**: `bash ../scripts/youtube.sh info "YOUTUBE_URL"`
+2. **Download video**: `bash ../scripts/youtube.sh download "YOUTUBE_URL" /tmp/video.mp4`
+3. **Upload to Timeless**: `bash ../scripts/upload.sh /tmp/video.mp4 en "Video Title"`
 4. Clean up the file from /tmp
 
 Downloads as mp4 (video+audio). No ffmpeg needed. Uses the best pre-muxed format (typically 720p), which is fine for Timeless.
