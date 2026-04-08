@@ -1,526 +1,453 @@
-# Timeless Unofficial API Reference
+# Timeless API Reference
 
-**Version**: Pre-release (internal endpoints)  
-**Base URL**: `https://my.timeless.day`  
-**Last Updated**: March 4, 2026
-
-> ⚠️ This documents Timeless's internal API endpoints that can be used for programmatic access before the official public API launches. These endpoints may change without notice.
+This document covers both the **official public API** and the **unofficial API** used by Timeless Skills.
 
 ---
 
-## Authentication
+## Official Public API
 
-All requests require a session token in the `Authorization` header:
+**Base URL:** `https://api.timeless.day/v1`
+**Auth:** `Authorization: Bearer YOUR_TOKEN`
+**Docs:** [docs.timeless.day](https://docs.timeless.day/)
+**Last Updated:** April 2026
+
+### Authentication
+
+```
+Authorization: Bearer YOUR_TOKEN
+```
+
+Generate API tokens at [my.timeless.day/api-token](https://my.timeless.day/api-token). Tokens are 64-character hex strings.
+
+### Pagination
+
+Cursor-based. All list responses include:
+```json
+{
+  "data": [...],
+  "next_cursor": "eyJjcmV...",
+  "has_more": true
+}
+```
+
+Pass `cursor` as a query parameter. Control page size with `limit` (1-100, default 25).
+
+### Resource IDs
+
+| Resource | Prefix | Example |
+|----------|--------|--------|
+| Meeting | `mtg_` | `mtg_abc123` |
+| Room | `room_` | `room_abc123` |
+| Document | `doc_` | `doc_abc123` |
+| User | `usr_` | `usr_abc123` |
+| Speaker | `spk_` | `spk_abc123` |
+| Webhook | `whk_` | `whk_abc123` |
+
+### Error Format
+
+```json
+{
+  "error": {
+    "code": "not_found",
+    "message": "Resource not found",
+    "details": [
+      { "field": "limit", "message": "Input should be less than or equal to 100" }
+    ]
+  }
+}
+```
+
+| Status | Code | Description |
+|--------|------|-------------|
+| 400 | `bad_request` | Invalid request parameters or body |
+| 401 | `unauthorized` | Missing or invalid API token |
+| 403 | `forbidden` | Token valid but lacks permission |
+| 404 | `not_found` | Resource does not exist or not accessible |
+| 429 | `rate_limited` | Too many requests |
+| 500 | `internal_error` | Unexpected server error |
+
+### Rate Limiting
+
+| Endpoint | Limit |
+|----------|-------|
+| Most endpoints | 60 requests/minute |
+| Webhook creation | 20 requests/minute |
+| File upload | 10 requests/minute |
+
+Headers on every response: `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`.
+
+---
+
+### Endpoints
+
+#### List Meetings
+
+```
+GET /meetings
+```
+
+Returns a paginated list of meetings.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `scope` | string | | `all` (default), `owned`, or `shared` |
+| `status` | string | | `completed`, `processing`, `scheduled`, `failed` |
+| `search` | string | | Search by title (substring match) |
+| `q` | string | | Semantic search across meeting content |
+| `start_date` | date | | From date (YYYY-MM-DD) |
+| `end_date` | date | | To date (YYYY-MM-DD) |
+| `participant` | string | | Filter by participant name or email |
+| `company` | string | | Filter by company name or domain |
+| `room_id` | string | | Filter by room ID |
+| `id` | string[] | | Filter by meeting ID(s). Repeat for multiple. |
+| `expand` | string | | `documents` to include inline |
+| `cursor` | string | | Pagination cursor |
+| `limit` | integer | | 1-100 (default 25) |
+
+**Response schema:**
+```json
+{
+  "data": [
+    {
+      "id": "mtg_abc123",
+      "title": "Weekly standup",
+      "status": "completed",
+      "source": "google_meet",
+      "start_time": "2026-01-15T10:00:00Z",
+      "end_time": "2026-01-15T10:30:00Z",
+      "duration": 1800,
+      "host": {
+        "id": "usr_def456",
+        "name": "Alice Johnson",
+        "email": "alice@example.com"
+      },
+      "participants": [
+        {
+          "name": "Bob Smith",
+          "email": "bob@example.com",
+          "title": "Engineer",
+          "company": "Acme Corp"
+        }
+      ],
+      "documents": [
+        { "id": "doc_abc123", "title": "Meeting summary", "created_at": "2026-01-15T10:35:00Z" }
+      ],
+      "created_at": "2026-01-15T10:00:00Z"
+    }
+  ],
+  "next_cursor": "eyJjcmV...",
+  "has_more": true
+}
+```
+
+**Meeting sources:** `google_meet`, `zoom`, `teams`, `slack`, `whatsapp`, `phone`, `upload`, `desktop`
+
+**Meeting statuses:** `completed`, `processing`, `scheduled`, `failed`
+
+---
+
+#### Get Transcript
+
+```
+GET /meetings/{meeting_id}/transcript
+```
+
+**Parameters:**
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `meeting_id` | string | ✅ | Meeting ID (e.g., `mtg_abc123`) |
+
+**Response schema:**
+```json
+{
+  "meeting_id": "mtg_abc123",
+  "language": "en",
+  "speakers": [
+    { "id": "spk_001", "name": "Alice Johnson" },
+    { "id": "spk_002", "name": "Bob Smith" }
+  ],
+  "segments": [
+    {
+      "speaker_id": "spk_001",
+      "start_time": 0,
+      "end_time": 4.5,
+      "text": "Good morning everyone, let's get started."
+    }
+  ]
+}
+```
+
+---
+
+#### Get Recording
+
+```
+GET /meetings/{meeting_id}/recording
+```
+
+Returns a temporary signed URL to download the recording.
+
+**Response schema:**
+```json
+{
+  "meeting_id": "mtg_abc123",
+  "recording_url": "https://storage.example.com/recordings/abc123?token=..."
+}
+```
+
+`recording_url` is `null` if no recording is available.
+
+---
+
+#### Get Document
+
+```
+GET /documents/{document_id}
+```
+
+**Parameters:**
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `document_id` | string | ✅ | Document ID (e.g., `doc_abc123`) |
+| `format` | string | | `html` (default), `markdown`, `raw`, `docx`, `json` |
+
+**Response schema:**
+```json
+{
+  "id": "doc_abc123",
+  "title": "Meeting summary",
+  "format": "markdown",
+  "content": "# Weekly standup\n\n## Key decisions\n...",
+  "created_at": "2026-01-15T10:35:00Z"
+}
+```
+
+For `docx`, `content` is base64-encoded. For `json`, `content` is a JSON-serialized array of content blocks.
+
+---
+
+#### List Rooms
+
+```
+GET /rooms
+```
+
+**Parameters:**
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `scope` | string | | `all` (default), `owned`, or `shared` |
+| `search` | string | | Search by title |
+| `id` | string[] | | Filter by room ID(s) |
+| `expand` | string | | `documents`, `meetings` |
+| `cursor` | string | | Pagination cursor |
+| `limit` | integer | | 1-100 (default 25) |
+
+**Response schema:**
+```json
+{
+  "data": [
+    {
+      "id": "room_abc123",
+      "title": "Engineering standups",
+      "created_at": "2026-01-01T00:00:00Z",
+      "updated_at": "2026-01-15T10:30:00Z",
+      "meeting_count": 42,
+      "meetings": [...],
+      "documents": [...]
+    }
+  ],
+  "next_cursor": null,
+  "has_more": false
+}
+```
+
+---
+
+#### Upload Media
+
+```
+PUT /meetings/upload
+```
+
+Upload raw binary file content (not multipart form data).
+
+**Parameters:**
+| Parameter | Location | Required | Description |
+|-----------|----------|----------|-------------|
+| `title` | query | | Recording title (max 500 chars) |
+| `language` | query | | Language code (e.g., `en`) |
+| `Content-Type` | header | ✅ | MIME type |
+
+**Supported audio:** `audio/mpeg`, `audio/mp4`, `audio/wav`, `audio/webm`, `audio/ogg`, `audio/aac`, `audio/flac`
+**Supported video:** `video/mp4`, `video/webm`, `video/ogg`, `video/quicktime`
+
+**Response:** `{ "id": "mtg_abc123", "status": "processing" }`
+
+Rate limit: 10 requests/minute.
+
+---
+
+#### Webhooks
+
+##### Create Webhook
+
+```
+POST /webhooks
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `url` | string | ✅ | HTTPS URL (max 2048 chars) |
+| `events` | string[] | ✅ | At least one event |
+| `enabled` | boolean | | Default `true` |
+
+**Events:** `meeting.transcript_ready`, `meeting.initial_summary_ready`
+
+**Response includes `secret`** (only returned at creation time):
+```json
+{
+  "id": "whk_abc123",
+  "url": "https://example.com/webhooks",
+  "events": ["meeting.transcript_ready"],
+  "enabled": true,
+  "secret": "a1b2c3d4e5f6...",
+  "created_at": "2026-01-15T12:00:00Z",
+  "updated_at": "2026-01-15T12:00:00Z"
+}
+```
+
+##### List Webhooks
+
+```
+GET /webhooks
+```
+
+Returns array of webhooks (without `secret`).
+
+##### Update Webhook
+
+```
+PATCH /webhooks/{webhook_id}
+```
+
+Partial update. Only include changed fields.
+
+##### Delete Webhook
+
+```
+DELETE /webhooks/{webhook_id}
+```
+
+##### Webhook Signatures
+
+Header: `X-Webhook-Signature: sha256=<hex HMAC-SHA256>`
+
+Computed with the webhook `secret` as key and raw request body as message. Use constant-time comparison.
+
+**Delivery:** 10s timeout, retries up to 3x (1s, 10s, 60s) for 5xx/429/network errors.
+
+---
+
+## Unofficial API
+
+**Base URL:** `https://my.timeless.day`
+**Auth:** `Authorization: Token YOUR_TOKEN`
+**Last Updated:** March 2026
+
+> These are internal API endpoints. They may change without notice. They are used for capabilities not yet available in the official API.
+
+### Authentication
 
 ```
 Authorization: Token YOUR_TOKEN
 ```
 
-### How to Get Your Token
+### Pagination
 
-1. Go to [my.timeless.day/api-token](https://my.timeless.day/api-token)
-2. Copy the access token
-
-> This token is tied to your user account. It may expire; grab a fresh one from the same page if you get 401 errors.
-
----
-
-## Endpoints
-
-### 1. List Meetings
-
-```
-GET /api/v1/spaces/meeting/
-```
-
-Returns a paginated list of your meetings.
-
-#### Query Parameters
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `include` | string | ✅ | `owned` (your meetings) or `shared` (shared with you) |
-| `search` | string | | Search by meeting title or attendees |
-| `start_date` | string | | From date (`YYYY-MM-DD`) |
-| `end_date` | string | | To date (`YYYY-MM-DD`) |
-| `status` | string | | Filter by status: `COMPLETED`, `SCHEDULED`, `PROCESSING`, `FAILED`, etc. |
-| `page` | integer | | Page number (default: 1) |
-| `per_page` | integer | | Results per page (default: 20) |
-
-#### Example
-
-```bash
-# List your completed meetings from the last week
-curl -s "https://my.timeless.day/api/v1/spaces/meeting/?include=owned&status=COMPLETED&start_date=2026-02-25&end_date=2026-03-04&per_page=50" \
-  -H "Authorization: Token $TIMELESS_TOKEN"
-```
-
-#### Response
-
+Page-based:
 ```json
 {
   "count": 42,
   "next": "https://my.timeless.day/api/v1/spaces/meeting/?page=2",
   "previous": null,
-  "results": [
-    {
-      "uuid": "abc123",
-      "title": "Weekly Standup",
-      "start_ts": "2026-03-03T10:00:00Z",
-      "end_ts": "2026-03-03T10:45:00Z",
-      "status": "COMPLETED",
-      "primary_conversation_uuid": "conv-456",
-      "conversation_source": "VIDEO_CONFERENCE_BOT_RECORDER",
-      "host_user": {
-        "uuid": "user-123",
-        "email": "you@company.com",
-        "first_name": "Your",
-        "last_name": "Name"
-      },
-      "created_at": "2026-03-03T09:55:00Z"
-    }
-  ]
+  "results": [...]
 }
 ```
 
-**Key fields:**
-- `uuid`: The space UUID (use this to get full details via Get Space)
-- `primary_conversation_uuid`: Use this to fetch the transcript
-- `status`: `COMPLETED` means transcript is ready
+### Endpoints
 
-> **To get all meetings (owned + shared):** Make two requests, one with `include=owned` and one with `include=shared`, then merge results.
+#### Get Space (Meeting or Room Details)
+
+```
+GET /api/v1/spaces/{uuid}/                           # Private
+GET /api/v1/spaces/{uuid}/workspace/?host_uuid={id}  # Shared
+GET /api/v1/spaces/public/{uuid}/{hostUuid}/          # Public
+```
+
+Returns full space details including `conversations[]`, `artifacts[]`, `contacts[]`, `organizations[]`, `threads[]`.
 
 ---
 
-### 2. List Rooms
-
-```
-GET /api/v1/spaces/room/
-```
-
-Returns a paginated list of your rooms (collaborative spaces containing multiple meetings).
-
-#### Query Parameters
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `include` | string | ✅ | `owned` or `shared` |
-| `search` | string | | Search by room title |
-| `page` | integer | | Page number (default: 1) |
-| `per_page` | integer | | Results per page (default: 20) |
-
-#### Example
-
-```bash
-curl -s "https://my.timeless.day/api/v1/spaces/room/?include=owned" \
-  -H "Authorization: Token $TIMELESS_TOKEN"
-```
-
-#### Response
-
-```json
-{
-  "count": 8,
-  "results": [
-    {
-      "uuid": "room-123",
-      "title": "Project Alpha",
-      "host_user": {
-        "uuid": "user-123",
-        "email": "you@company.com",
-        "first_name": "Your",
-        "last_name": "Name"
-      },
-      "created_at": "2026-02-15T14:00:00Z"
-    }
-  ]
-}
-```
-
-> Rooms don't have `start_ts`, `end_ts`, or `status` fields. To see the meetings inside a room, use **Get Space**.
-
----
-
-### 3. Get Space (Meeting or Room Details)
-
-```
-GET /api/v1/spaces/{uuid}/
-```
-
-Returns the full details for any space (meeting or room), including conversations, AI-generated documents, contacts, and organizations.
-
-#### Choosing the Right Endpoint
-
-Timeless has three access levels for spaces. Try them in this order:
-
-| # | Endpoint | When to Use |
-|---|----------|-------------|
-| 1 | `GET /api/v1/spaces/{uuid}/` | Your own spaces (private) |
-| 2 | `GET /api/v1/spaces/{uuid}/workspace/?host_uuid={hostUuid}` | Spaces shared within your workspace. **`host_uuid` is required** (get it from `host_user.uuid` in the list response). |
-| 3 | `GET /api/v1/spaces/public/{uuid}/{hostUuid}/` | Publicly shared spaces |
-
-If endpoint 1 returns 401/403/404, try endpoint 2. If that also fails, try endpoint 3.
-
-#### Example
-
-```bash
-# Private space
-curl -s "https://my.timeless.day/api/v1/spaces/abc123/" \
-  -H "Authorization: Token $TIMELESS_TOKEN"
-```
-
-#### Response
-
-```json
-{
-  "uuid": "abc123",
-  "title": "Weekly Standup",
-  "space_type": "MEETING",
-  "is_processing": false,
-  "conversations": [
-    {
-      "uuid": "conv-456",
-      "name": "Weekly Standup",
-      "start_ts": "2026-03-03T10:00:00Z",
-      "end_ts": "2026-03-03T10:45:00Z",
-      "status": "COMPLETED",
-      "language": "he",
-      "source": "VIDEO_CONFERENCE_BOT_RECORDER",
-      "event": {
-        "title": "Weekly Standup",
-        "attendees": ["alice@co.com", "bob@co.com"]
-      }
-    }
-  ],
-  "artifacts": [
-    {
-      "uuid": "art-789",
-      "name": "Meeting Summary",
-      "type": "summary",
-      "content": {
-        "body": "<h2>Key Decisions</h2><p>...</p>"
-      },
-      "version": 1
-    }
-  ],
-  "contacts": [
-    {
-      "uuid": "contact-1",
-      "name": "Alice",
-      "conversations": [{ "uuid": "conv-456", "..." : "..." }]
-    }
-  ],
-  "organizations": [
-    {
-      "uuid": "org-1",
-      "name": "Acme Corp",
-      "conversations": [{ "uuid": "conv-456", "..." : "..." }]
-    }
-  ],
-  "threads": [
-    {
-      "uuid": "thread-1",
-      "messages": [],
-      "is_running": false
-    }
-  ]
-}
-```
-
-**Key fields:**
-- `conversations[]`: All conversations (recordings) in this space. For meetings, typically one. For rooms, can be many.
-- `artifacts[]`: AI-generated documents. The `type` field tells you what it is (e.g., `summary`). Content is in `content.body` (HTML).
-- `contacts[]` and `organizations[]`: Each contains nested `conversations[]` for meetings associated with that contact/org.
-- `threads[]`: AI chat threads. Use `threads[0].uuid` if you want to chat with the space agent.
-
----
-
-### 4. Get Transcript
-
-```
-GET /api/v1/conversation/{conversation_uuid}/transcript/
-```
-
-Returns the full speaker-attributed transcript for a conversation.
-
-#### How to Get the Conversation UUID
-
-- From **List Meetings**: use the `primary_conversation_uuid` field
-- From **Get Space**: use `conversations[].uuid`
-
-#### Example
-
-```bash
-curl -s "https://my.timeless.day/api/v1/conversation/conv-456/transcript/" \
-  -H "Authorization: Token $TIMELESS_TOKEN"
-```
-
-#### Response
-
-```json
-{
-  "items": [
-    {
-      "text": "Good morning everyone, let's get started.",
-      "start_time": 0.5,
-      "end_time": 3.2,
-      "speaker_id": "speaker_0"
-    },
-    {
-      "text": "I'll share the roadmap updates.",
-      "start_time": 3.5,
-      "end_time": 5.8,
-      "speaker_id": "speaker_1"
-    }
-  ],
-  "speakers": [
-    { "id": "speaker_0", "name": "Alice Johnson" },
-    { "id": "speaker_1", "name": "Bob Smith" }
-  ],
-  "language": "he"
-}
-```
-
-**Formatting the transcript:**
-
-Map each item's `speaker_id` to the `speakers` array to get human-readable output:
-
-```
-[00:00:00] Alice Johnson: Good morning everyone, let's get started.
-[00:00:03] Bob Smith: I'll share the roadmap updates.
-```
-
----
-
-### 5. Get Recording URL
-
-```
-GET /api/v1/conversation/{conversation_uuid}/recording/
-```
-
-Returns a time-limited signed URL to the audio/video recording.
-
-#### Example
-
-```bash
-curl -s "https://my.timeless.day/api/v1/conversation/conv-456/recording/" \
-  -H "Authorization: Token $TIMELESS_TOKEN"
-```
-
-#### Response
-
-```json
-{
-  "media_url": "https://storage.googleapis.com/...?X-Goog-Signature=..."
-}
-```
-
-> The URL expires after a short time. Fetch it when you need it, don't cache it.
-
----
-
-### 6. Upload a Recording
-
-Upload an audio/video file for transcription and AI processing. This is a 3-step flow.
-
-#### Step 1: Get a Presigned Upload URL
-
-```bash
-curl -X POST "https://my.timeless.day/api/v1/conversation/storage/presigned-url/" \
-  -H "Authorization: Token $TIMELESS_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "file_name": "team-meeting.mp3",
-    "file_type": "audio/mpeg"
-  }'
-```
-
-**Response:**
-```json
-{
-  "url": "https://storage.googleapis.com/..."
-}
-```
-
-#### Step 2: Upload the File
-
-```bash
-curl -X PUT "PRESIGNED_URL_FROM_STEP_1" \
-  -H "Content-Type: audio/mpeg" \
-  --upload-file team-meeting.mp3
-```
-
-#### Step 3: Trigger Processing
-
-```bash
-curl -X POST "https://my.timeless.day/api/v1/conversation/process/media/" \
-  -H "Authorization: Token $TIMELESS_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "language": "he",
-    "filename": "Team Meeting March 4"
-  }'
-```
-
-**Response:**
-```json
-{
-  "event_uuid": "evt-abc123",
-  "space_uuid": "space-xyz789"
-}
-```
-
-After processing completes (poll `GET /api/v1/spaces/{space_uuid}/` until `is_processing` is `false`), the transcript and AI summary will be available.
-
-**Supported formats:** mp3, wav, m4a, mp4, webm, ogg
-
----
-
-### 7. Resolve a Timeless Share URL
-
-Timeless URLs like `https://my.timeless.day/m/ENCODED_ID` contain two Base64-encoded short IDs (22 characters each), concatenated as `spaceId + hostId`.
-
-#### Decoding Logic
-
-```python
-import base64
-
-def decode_timeless_url(url):
-    encoded = url.rstrip('/').split('/m/')[-1]
-    combined = base64.b64decode(encoded).decode()
-    ID_LEN = 22
-    return {
-        "space_id": combined[:ID_LEN],
-        "host_id": combined[ID_LEN:]
-    }
-```
-
-```javascript
-// Node.js / JavaScript
-function decodeTimelessUrl(url) {
-  const encoded = url.replace(/\/$/, '').split('/m/').pop();
-  const combined = Buffer.from(encoded, 'base64').toString();
-  return {
-    spaceId: combined.slice(0, 22),
-    hostId: combined.slice(22)
-  };
-}
-```
-
-```bash
-# Shell
-ENCODED="the_part_after_/m/"
-DECODED=$(echo "$ENCODED" | base64 -d)
-SPACE_ID=$(echo "$DECODED" | cut -c1-22)
-HOST_ID=$(echo "$DECODED" | cut -c23-44)
-```
-
-Once decoded, use the space ID with the **Get Space** endpoints (try private → workspace → public, as described in section 3).
-
----
-
-### 8. Chat with Meeting AI
+#### Chat with Meeting AI
 
 ```
 POST /api/v1/agent/space/chat/
 ```
 
-Send a question to Timeless's AI agent about a meeting or room.
+Sends a message; response is async. Poll the thread:
 
-> ⚠️ This endpoint is **asynchronous**. It returns `204 No Content` immediately. The AI response arrives via WebSocket/Pusher. For programmatic use, poll the thread for the response.
-
-#### Example
-
-```bash
-# Send a question
-curl -X POST "https://my.timeless.day/api/v1/agent/space/chat/" \
-  -H "Authorization: Token $TIMELESS_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "space_uuid": "abc123",
-    "thread_uuid": "thread-1",
-    "message": {
-      "role": "user",
-      "parts": [{"type": "text", "text": "What were the action items?"}],
-      "date": "2026-03-04T18:00:00Z",
-      "metadata": {"timestamp": "2026-03-04T18:00:00Z", "mentions": []},
-      "id": "msg-unique-id"
-    }
-  }'
+```
+GET /api/v1/agent/threads/{thread_uuid}/
 ```
 
-#### Polling for the Response
-
-```bash
-# Poll the thread until is_running becomes false
-curl -s "https://my.timeless.day/api/v1/agent/threads/thread-1/" \
-  -H "Authorization: Token $TIMELESS_TOKEN"
-```
-
-The thread response includes a `messages` array with all messages (user + AI). The last message with `role: "assistant"` is the AI's response. Keep polling every 2-3 seconds until `is_running: false`.
+Until `is_running` is `false`.
 
 ---
 
-## Common Workflows
-
-### Workflow 1: Export All Meeting Transcripts
+#### Create a Room
 
 ```
-1. GET /api/v1/spaces/meeting/?include=owned&status=COMPLETED&per_page=100
-   → Collect all meeting UUIDs and primary_conversation_uuids
-   → Paginate through all pages using the `next` URL
-
-2. For each meeting:
-   GET /api/v1/conversation/{primary_conversation_uuid}/transcript/
-   → Save transcript with speaker names
-
-3. (Optional) For AI summaries:
-   GET /api/v1/spaces/{uuid}/
-   → Extract artifacts[] where type == "summary"
+POST /api/v1/spaces/
 ```
 
-### Workflow 2: Get All Conversations in a Room
-
-```
-1. GET /api/v1/spaces/{room_uuid}/
-   → Response contains conversations[], contacts[], organizations[]
-
-2. Collect ALL unique conversation UUIDs from:
-   - space.conversations[].uuid
-   - space.contacts[].conversations[].uuid  
-   - space.organizations[].conversations[].uuid
-   (Deduplicate by UUID)
-
-3. For each conversation UUID:
-   GET /api/v1/conversation/{uuid}/transcript/
-   → Fetch the transcript
-```
-
-### Workflow 3: Search Meetings and Get Transcripts
-
-```
-1. GET /api/v1/spaces/meeting/?include=owned&search=quarterly+review
-   → Find meetings matching your search
-
-2. Pick the meeting you want, take its primary_conversation_uuid
-
-3. GET /api/v1/conversation/{primary_conversation_uuid}/transcript/
-   → Full speaker-attributed transcript
-```
-
-### Workflow 4: Resolve a Shared Link and Read It
-
-```
-1. Decode the /m/ URL (see section 7)
-2. Try GET /api/v1/spaces/{space_uuid}/
-3. If 40x, try GET /api/v1/spaces/{space_uuid}/workspace/?host_uuid={host_uuid}
-4. If 40x, try GET /api/v1/spaces/public/{space_uuid}/{host_uuid}/
-5. From the space response, get conversations and fetch transcripts
-```
+Body: `{"has_onboarded": true, "space_type": "ROOM", "title": "Room Title"}`
 
 ---
 
-## Status Values
+#### Add/Remove Conversation from Room
+
+```
+POST   /api/v1/spaces/{room_uuid}/resources/   # Add
+DELETE /api/v1/spaces/{room_uuid}/resources/   # Remove
+```
+
+Body: `{"resource_type": "CONVERSATION", "resource_uuid": "CONV_UUID"}`
+
+---
+
+#### Get User Settings
+
+```
+GET /api/v1/users/
+```
+
+Returns user profile including `settings.identifier` for scheduling.
+
+---
+
+#### Create Scheduling Invite
+
+```
+POST /api/v1/invite/
+```
+
+See the `timeless-scheduling` skill for full details.
+
+---
+
+### Status Values
 
 | Status | Description |
 |--------|-------------|
@@ -531,7 +458,7 @@ The thread response includes a `messages` array with all messages (user + AI). T
 | `IN_CALL` | Bot is currently recording |
 | `IN_WAITING_ROOM` | Bot waiting to be admitted |
 
-## Recording Sources
+### Recording Sources
 
 | Source | Description |
 |--------|-------------|
@@ -545,111 +472,19 @@ The thread response includes a `messages` array with all messages (user + AI). T
 | `PHONE_CALL` | Phone call recording |
 | `WHATSAPP_MESSAGE` | WhatsApp voice message |
 
----
+### Error Handling
 
-### 9. Create a Room
-
-```
-POST /api/v1/spaces/
-```
-
-Create a new room (collaborative space for grouping meetings).
-
-#### Example
-
-```bash
-curl -X POST "https://my.timeless.day/api/v1/spaces/" \
-  -H "Authorization: Token $TIMELESS_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "has_onboarded": true,
-    "space_type": "ROOM",
-    "title": "Project Alpha"
-  }'
-```
-
-#### Request Body
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `has_onboarded` | boolean | ✅ | Always `true` |
-| `space_type` | string | ✅ | Always `"ROOM"` for rooms |
-| `title` | string | ✅ | Room title |
-
-#### Response
-
-Returns the full space object (same schema as Get Space). Extract `uuid` for subsequent operations.
-
----
-
-### 10. Add Resource to Room
-
-```
-POST /api/v1/spaces/{space_uuid}/resources/
-```
-
-Attach a conversation (meeting recording) to a room. Call once per conversation you want to add.
-
-#### Example
-
-```bash
-curl -X POST "https://my.timeless.day/api/v1/spaces/ROOM_UUID/resources/" \
-  -H "Authorization: Token $TIMELESS_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "resource_type": "CONVERSATION",
-    "resource_uuid": "CONVERSATION_UUID"
-  }'
-```
-
-#### Request Body
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `resource_type` | string | ✅ | `"CONVERSATION"` |
-| `resource_uuid` | string | ✅ | UUID of the conversation to attach |
-
-> **How to get conversation UUIDs:** From List Meetings, use `primary_conversation_uuid`. From Get Space, use `conversations[].uuid`.
-
----
-
-### 11. Remove Resource from Room
-
-```
-DELETE /api/v1/spaces/{space_uuid}/resources/
-```
-
-Remove a conversation from a room.
-
-#### Example
-
-```bash
-curl -X DELETE "https://my.timeless.day/api/v1/spaces/ROOM_UUID/resources/" \
-  -H "Authorization: Token $TIMELESS_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "resource_type": "CONVERSATION",
-    "resource_uuid": "CONVERSATION_UUID"
-  }'
-```
-
-Same request body as Add Resource.
-
----
-
-## Rate Limits
-
-No official rate limits are documented for the internal API. Be respectful:
-- Add 0.5s delay between sequential requests
-- Don't make more than 60 requests per minute
-- Use pagination instead of fetching everything at once
-
-## Error Handling
-
-| Code | Meaning |
-|------|---------|
-| 401 | Token expired or invalid. Re-authenticate. |
-| 403 | No access to this resource. Try workspace/public endpoints. |
+| Code | Action |
+|------|--------|
+| 401 | Token expired. Re-authenticate at my.timeless.day/api-token |
+| 403 | No access. Try workspace or public endpoint. |
 | 404 | Resource not found. |
 | 429 | Rate limited. Back off and retry. |
 | 500 | Server error. Retry with exponential backoff. |
+
+### Rate Limits
+
+No official limits. Be respectful:
+- 0.5s delay between sequential requests
+- Max ~60 requests per minute
+- Use pagination
