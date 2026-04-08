@@ -8,24 +8,36 @@ Published on [ClawHub](https://clawhub.ai/eilonmore/timeless).
 
 - Search and list meetings, rooms, transcripts, AI summaries
 - Upload audio/video recordings for transcription
+- Retrieve AI-generated documents in multiple formats (markdown, HTML, docx, JSON)
 - Chat with Timeless AI about meeting content
 - Capture podcast episodes and YouTube videos into Timeless
 - Schedule meetings with productivity-first slot selection and curated invite links
-- Build automations with cron polling patterns
+- Build automations with webhooks or cron polling patterns
 - Create and manage rooms, add/remove conversations
+
+## APIs
+
+This project uses two Timeless APIs:
+
+| API | Base URL | Used For |
+|-----|----------|----------|
+| **[Official API](https://docs.timeless.day/)** | `https://api.timeless.day/v1` | Meetings, rooms, transcripts, recordings, documents, uploads, webhooks |
+| **Unofficial API** | `https://my.timeless.day` | Space details, AI chat, room management, scheduling, share URL resolution |
+
+The official API is used for all standard operations. The unofficial API is used for advanced features not yet available in the official API.
 
 ## Skills
 
 | Skill | Description |
 |-------|-------------|
-| [timeless-api](timeless-api/SKILL.md) | Meetings, rooms, transcripts, capture, automation |
+| [timeless-api](timeless-api/SKILL.md) | Meetings, rooms, transcripts, documents, uploads, webhooks, capture, automation |
 | [timeless-scheduling](timeless-scheduling/SKILL.md) | Meeting scheduling with smart slot selection |
 
 ## Shared Files
 
 | File | Description |
 |------|-------------|
-| [api-reference.md](api-reference.md) | Full Timeless API endpoint documentation |
+| [api-reference.md](api-reference.md) | Full API endpoint documentation (official + unofficial) |
 | [scripts/](scripts/) | Helper scripts for uploads, podcasts, YouTube |
 
 ## Setup
