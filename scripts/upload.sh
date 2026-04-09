@@ -8,40 +8,38 @@ FILE="${1:?Usage: upload.sh FILE_PATH LANGUAGE [TITLE]}"
 LANG="${2:?Usage: upload.sh FILE_PATH LANGUAGE [TITLE]}"
 TITLE="${3:-$(basename "$FILE" | sed 's/\.[^.]*$//')}"
 TOKEN="${TIMELESS_ACCESS_TOKEN:?TIMELESS_ACCESS_TOKEN not set}"
-BASE="https://my.timeless.day"
+BASE="https://api.timeless.day/v1"
 
-FILENAME=$(basename "$FILE")
-EXT="${FILENAME##*.}"
+EXT="${FILE##*.}"
+EXT=$(echo "$EXT" | tr '[:upper:]' '[:lower:]')
 
 case "$EXT" in
-  mp3) MIME="audio/mpeg" ;;
-  wav) MIME="audio/wav" ;;
-  m4a) MIME="audio/mp4" ;;
-  mp4) MIME="video/mp4" ;;
+  mp3)  MIME="audio/mpeg" ;;
+  wav)  MIME="audio/wav" ;;
+  m4a)  MIME="audio/mp4" ;;
+  mp4)  MIME="video/mp4" ;;
   webm) MIME="audio/webm" ;;
-  ogg) MIME="audio/ogg" ;;
-  *) echo "Unsupported format: $EXT"; exit 1 ;;
+  ogg)  MIME="audio/ogg" ;;
+  aac)  MIME="audio/aac" ;;
+  flac) MIME="audio/flac" ;;
+  mov)  MIME="video/quicktime" ;;
+  *)    echo "Unsupported format: $EXT"; exit 1 ;;
 esac
 
-# Step 1: Presigned URL
-echo "Getting upload URL..."
-PRESIGN=$(curl -s -X POST "$BASE/api/v1/conversation/storage/presigned-url/" \
-  -H "Authorization: Token $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d "{\"file_name\": \"$FILENAME\", \"file_type\": \"$MIME\"}")
-URL=$(echo "$PRESIGN" | node -e "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>console.log(JSON.parse(d).url))")
+ENCODED_TITLE=$(printf '%s' "$TITLE" | sed 's/ /%20/g')
 
-# Step 2: Upload
-echo "Uploading $FILENAME..."
-curl -s -X PUT "$URL" -H "Content-Type: $MIME" --upload-file "$FILE" > /dev/null
+echo "Uploading $(basename "$FILE")..."
+RESULT=$(curl -s -X PUT "$BASE/meetings/upload?title=$ENCODED_TITLE&language=$LANG" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: $MIME" \
+  --data-binary @"$FILE")
 
-# Step 3: Process
-echo "Processing..."
-RESULT=$(curl -s -X POST "$BASE/api/v1/conversation/process/media/" \
-  -H "Authorization: Token $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d "{\"language\": \"$LANG\", \"filename\": \"$TITLE\"}")
+MEETING_ID=$(echo "$RESULT" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
 
-SPACE=$(echo "$RESULT" | node -e "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>console.log(JSON.parse(d).space_uuid))")
-echo "Uploaded. Space UUID: $SPACE"
-echo "Poll https://my.timeless.day/api/v1/spaces/$SPACE/ until is_processing=false"
+if [ -z "$MEETING_ID" ]; then
+  echo "Upload failed. Response: $RESULT"
+  exit 1
+fi
+
+echo "Uploaded. Meeting ID: $MEETING_ID"
+echo "Poll https://api.timeless.day/v1/meetings?id=$MEETING_ID until status is completed"
